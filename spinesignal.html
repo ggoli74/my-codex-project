@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpineSignal — Spine Research Evidence Platform</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root {
+      --bg: #061426;
+      --bg-soft: #0b2038;
+      --card: #10253f;
+      --line: #1e3a5f;
+      --text: #e5f3ff;
+      --muted: #9fc0df;
+      --teal: #25d0c8;
+      --cyan: #4ab4ff;
+      --warn: #ffb86b;
+      --bad: #ff6d8a;
+      --good: #5df4b7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(circle at top right, #173d67 0%, var(--bg) 35%);
+      color: var(--text);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      background: rgba(6, 20, 38, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+      z-index: 10;
+    }
+    .container { max-width: 1300px; margin: 0 auto; padding: 16px; }
+    .title { font-size: 1.45rem; font-weight: 700; margin: 0; }
+    .subtitle { color: var(--muted); margin-top: 4px; }
+    nav { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .tab-btn {
+      border: 1px solid var(--line);
+      background: var(--bg-soft);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .tab-btn.active { background: linear-gradient(90deg, #0e4468, #124f7b); border-color: #2f6f9d; }
+    .panel { display: none; padding: 18px 0; }
+    .panel.active { display: block; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: linear-gradient(160deg, rgba(16,37,63,.95), rgba(12,27,47,.95));
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.22);
+    }
+    .score { font-size: 1.7rem; font-weight: 700; color: var(--teal); }
+    .muted { color: var(--muted); }
+    input, select, button, textarea {
+      background: #0b1f35;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+    }
+    button { cursor: pointer; }
+    .search-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .topic-item { border-left: 4px solid var(--cyan); margin-bottom: 10px; }
+    .small { font-size: 0.86rem; }
+    .kpi { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; }
+    .badge { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 0.75rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; }
+    .twocol { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
+    @media (max-width: 980px) { .twocol { grid-template-columns: 1fr; } }
+    .finding-support { color: var(--good); }
+    .finding-contradict { color: var(--bad); }
+    .pill { display:inline-block; margin:2px 4px 2px 0; padding: 2px 8px; background: #16365a; border-radius: 999px; border: 1px solid #27557f; }
+    .footer-note { color: var(--muted); margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1 class="title">SpineSignal</h1>
+      <div class="subtitle">Aggregated multi-database evidence intelligence for spine surgery research writing</div>
+      <nav id="tabs"></nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="home" class="panel active"></section>
+    <section id="directory" class="panel"></section>
+    <section id="dashboard" class="panel"></section>
+    <section id="quadrant" class="panel"></section>
+    <section id="compare" class="panel"></section>
+    <section id="assistant" class="panel"></section>
+  </main>
+
+<script>
+const DB_SOURCES = ["PubMed", "Cochrane", "Embase", "Google Scholar", "Web of Science"];
+const TOPICS = [
+  ["Lumbar Fusion vs Disc Replacement","Degenerative","Lumbar","Adult"],
+  ["ACDF Outcomes in Cervical Radiculopathy","Degenerative","Cervical","Adult"],
+  ["Cervical Laminoplasty vs Laminectomy+Fusion","Degenerative","Cervical","Adult"],
+  ["Endoscopic Lumbar Discectomy","Minimally Invasive Surgery","Lumbar","Adult"],
+  ["OLIF vs TLIF for Spondylolisthesis","Minimally Invasive Surgery","Lumbar","Adult"],
+  ["XLIF Cage Subsidence Risk","Minimally Invasive Surgery","Lumbar","Adult"],
+  ["Open PLIF Long-term Outcomes","Degenerative","Lumbar","Adult"],
+  ["Robotic-Assisted Pedicle Screw Placement","AI & Navigation","Lumbar","Adult"],
+  ["AI-based Sagittal Balance Planning","AI & Navigation","Thoracic","Adult"],
+  ["3D-Printed Patient-specific Interbody Implants","Biologics & Fusion","Lumbar","Adult"],
+  ["BMP-2 in Lumbar Fusion","Biologics & Fusion","Lumbar","Adult"],
+  ["Stem Cell Therapy for Disc Regeneration","Biologics & Fusion","Lumbar","Adult"],
+  ["Sarcopenia and Spine Surgery Outcomes","Degenerative","Lumbar","Elderly/Osteoporotic"],
+  ["Osteoporosis Optimization Before Instrumented Fusion","Biologics & Fusion","Lumbar","Elderly/Osteoporotic"],
+  ["Vertebroplasty for Osteoporotic Compression Fracture","Trauma","Thoracic","Elderly/Osteoporotic"],
+  ["Kyphoplasty vs Vertebroplasty","Trauma","Thoracic","Elderly/Osteoporotic"],
+  ["Prophylactic Vertebral Augmentation","Trauma","Thoracic","Elderly/Osteoporotic"],
+  ["Spinal Cord Stimulation for Failed Back Surgery Syndrome","Degenerative","Lumbar","Adult"],
+  ["ERAS Protocols in Lumbar Fusion","Degenerative","Lumbar","Adult"],
+  ["Ambulatory Single-level Lumbar Fusion","Minimally Invasive Surgery","Lumbar","Adult"],
+  ["Adolescent Idiopathic Scoliosis PSO Outcomes","Deformity","Thoracic","Pediatric"],
+  ["Adult Spinal Deformity Pedicle Subtraction Osteotomy","Deformity","Lumbar","Adult"],
+  ["Traumatic Thoracolumbar Burst Fracture Fixation Strategy","Trauma","Thoracic","Adult"],
+  ["Early Decompression for Acute SCI","Trauma","Cervical","Adult"],
+  ["Intradural Extramedullary Tumor Surgery Outcomes","Tumor","Thoracic","Adult"],
+  ["En bloc Spondylectomy in Spinal Tumor","Tumor","Thoracic","Adult"],
+  ["Tuberculous Spondylodiscitis Surgical Timing","Infection","Thoracic","Adult"],
+  ["Pyogenic Spondylodiscitis Instrumentation Safety","Infection","Lumbar","Adult"],
+  ["Cervical Disc Arthroplasty Adjacent Segment Disease","Degenerative","Cervical","Adult"],
+  ["Pediatric Cervical Instrumentation Safety","Trauma","Cervical","Pediatric"],
+  ["Bisphosphonate-associated AFF and Spine Surgery","Biologics & Fusion","Lumbar","Elderly/Osteoporotic"],
+  ["MRONJ Risk in Spine Patients on Antiresorptives","Biologics & Fusion","Lumbar","Elderly/Osteoporotic"],
+  ["Romosozumab and Fusion Biology","Biologics & Fusion","Lumbar","Elderly/Osteoporotic"],
+  ["Denosumab Cessation and Vertebral Fracture Risk","Biologics & Fusion","Thoracic","Elderly/Osteoporotic"],
+  ["Navigation Accuracy in Revision Spine Surgery","AI & Navigation","Lumbar","Adult"],
+  ["Deep Learning MRI-based Disc Degeneration Scoring","AI & Navigation","Lumbar","Adult"]
+];
+
+const JOURNALS = ["Spine","The Spine Journal","European Spine Journal","JNS: Spine","Global Spine Journal","Asian Spine Journal","JBJS","Clinical Orthopaedics and Related Research","Osteoporosis and Sarcopenia","Journal of Bone Metabolism","Bone"];
+const OUTCOMES = ["ODI","VAS","JOA","SF-36","NDI","EQ-5D"];
+
+function seeded(seed) { let x = Math.sin(seed) * 10000; return x - Math.floor(x); }
+function pick(arr, i) { return arr[i % arr.length]; }
+
+function makeTopicData() {
+  const current = new Date().getFullYear();
+  return TOPICS.map((t, idx) => {
+    const [name, category, region, population] = t;
+    const base = 45 + Math.floor(seeded(idx+3) * 45);
+    let evidenceScore = base;
+    let trendBias = 1;
+    if (name.includes("AI") || name.includes("Robotic") || name.includes("Deep Learning")) trendBias = 1.7;
+    if (name.includes("Open PLIF")) trendBias = 0.74;
+    if (name.includes("Stem Cell")) evidenceScore = 40;
+    if (name.includes("BMP-2")) evidenceScore = 78;
+    if (name.includes("Prophylactic")) evidenceScore = 48;
+
+    const yearly = [];
+    let total = 0;
+    for (let y = current - 9; y <= current; y++) {
+      const yearIdx = y - (current - 9);
+      const baseCount = Math.max(4, Math.floor((10 + seeded(idx*y+7)*16) * trendBias * (0.8 + yearIdx*0.05)));
+      yearly.push({ year: y, count: baseCount });
+      total += baseCount;
+    }
+    const twoYearGrowth = ((yearly[9].count + yearly[8].count) / Math.max(1, yearly[1].count + yearly[0].count) - 1) * 100;
+    const rcts = Math.max(1, Math.round(total * (evidenceScore/100) * 0.1));
+
+    const dbBreakdown = DB_SOURCES.map((db, di) => {
+      const count = Math.floor(total * (0.12 + seeded(idx*17+di*13) * 0.28));
+      const q = Math.max(20, Math.min(95, Math.round(evidenceScore + (seeded(idx*31+di)-0.5)*18)));
+      return { db, count, quality: q };
+    });
+
+    const level = {
+      I: Math.max(3, Math.round(evidenceScore*0.22)),
+      II: Math.max(6, Math.round(18 + evidenceScore*0.18)),
+      III: Math.max(10, Math.round(35 - evidenceScore*0.09 + seeded(idx*5)*7)),
+      IV: Math.max(8, Math.round(22 - evidenceScore*0.06 + seeded(idx*6)*10)),
+      V: Math.max(4, Math.round(14 - evidenceScore*0.05 + seeded(idx*7)*6))
+    };
+
+    const findings = DB_SOURCES.flatMap((db, di) => {
+      const commonDoi = `10.${1000+idx}${di}/spine.${(2015+di)}.${100+idx}`;
+      return [
+        {
+          db,
+          type: "support",
+          citation: `${pick(["Kim HJ", "Park JH", "Smith TR", "Garcia RM", "Chen Y"], idx+di)} et al. ${name}: improved ${pick(OUTCOMES, idx+di)} with reduced revision burden. ${pick(JOURNALS, idx+di)}. ${2016 + (idx+di)%9}. doi:${commonDoi}`,
+          doi: `https://doi.org/${commonDoi}`,
+          cites: 48 + Math.floor(seeded(idx*9+di)*320)
+        },
+        {
+          db,
+          type: "contradict",
+          citation: `${pick(["Lee SH", "Brown A", "Watanabe K", "D'Souza M", "Rossi G"], idx+di+2)} et al. ${name}: heterogeneous effect and complication concern in high-risk patients. ${pick(JOURNALS, idx+di+3)}. ${2017 + (idx+di)%8}. doi:10.${1100+idx}${di}/spine.${(2017+di)}.${200+idx}`,
+          doi: `https://doi.org/10.${1100+idx}${di}/spine.${(2017+di)}.${200+idx}`,
+          cites: 35 + Math.floor(seeded(idx*11+di)*260)
+        }
+      ];
+    });
+
+    const complicationRate = +(4 + seeded(idx*14)*18).toFixed(1);
+    const fusionRate = +(78 + seeded(idx*15)*18).toFixed(1);
+
+    return {
+      id: `topic-${idx+1}`,
+      name, category, region, population, evidenceScore,
+      description: `${name} evidence profile integrating PubMed/Cochrane/Embase/Google Scholar/Web of Science for manuscript-ready synthesis.`,
+      mesh: ["Spine", "Surgery", region, category.split(" ")[0], name.split(" ")[0]],
+      outcomes: OUTCOMES.filter((_, oi) => (idx+oi)%2===0).slice(0,4),
+      landmark: findings.filter(f=>f.type==='support').sort((a,b)=>b.cites-a.cites).slice(0,2),
+      yearly, total, rcts, dbBreakdown, level, findings, twoYearGrowth,
+      studyType: evidenceScore > 75 ? "RCT" : evidenceScore > 60 ? "Meta-analysis" : "All",
+      complicationRate, fusionRate
+    };
+  });
+}
+
+const DATA = makeTopicData();
+let selectedTopic = DATA[0];
+
+const tabs = [
+  ["home", "Overview"], ["directory", "Topic Directory"], ["dashboard", "Evidence Dashboard"],
+  ["quadrant", "Evidence Quadrant"], ["compare", "Head-to-Head"], ["assistant", "Manuscript Assistant"]
+];
+
+function initTabs() {
+  const node = document.getElementById('tabs');
+  node.innerHTML = tabs.map(([id, label], i) => `<button class="tab-btn ${i===0?'active':''}" data-id="${id}">${label}</button>`).join('');
+  node.querySelectorAll('button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.getElementById(btn.dataset.id).classList.add('active');
+      if (btn.dataset.id === 'dashboard') renderDashboard();
+      if (btn.dataset.id === 'quadrant') renderQuadrant();
+      if (btn.dataset.id === 'compare') renderCompare();
+      if (btn.dataset.id === 'assistant') renderAssistant();
+    };
+  });
+}
+
+function renderHome() {
+  const trending = [...DATA].sort((a,b)=>b.twoYearGrowth-a.twoYearGrowth).slice(0,6);
+  const gaps = DATA.filter(t=>t.evidenceScore<58 && t.total>120).slice(0,6);
+  const hotPapers = DATA.flatMap(t=>t.findings.filter(f=>f.type==='support').slice(0,1).map(f=>({topic:t.name,...f})))
+    .sort((a,b)=>b.cites-a.cites).slice(0,8);
+
+  document.getElementById('home').innerHTML = `
+    <div class="grid">
+      <div class="card"><h3>Research Topics</h3><div class="score">${DATA.length}</div><div class="muted">across ${[...new Set(DATA.map(d=>d.category))].length} categories</div></div>
+      <div class="card"><h3>Databases Aggregated</h3><div class="score">5</div><div class="muted">PubMed, Cochrane, Embase, Scholar, WoS</div></div>
+      <div class="card"><h3>Median Evidence Score</h3><div class="score">${Math.round(DATA.reduce((s,d)=>s+d.evidenceScore,0)/DATA.length)}</div><div class="muted">0–100 evidence strength scale</div></div>
+      <div class="card"><h3>Total Simulated Publications</h3><div class="score">${DATA.reduce((s,d)=>s+d.total,0)}</div><div class="muted">last 10 years, yearly granularity</div></div>
+    </div>
+    <div class="twocol" style="margin-top:12px;">
+      <div class="card">
+        <h3>Trending Now</h3>
+        ${trending.map(t=>`<div class="kpi"><span>${t.name}</span><span class="badge">+${Math.round(t.twoYearGrowth)}%</span></div>`).join('')}
+      </div>
+      <div class="card">
+        <h3>Research Gaps</h3>
+        ${gaps.map(t=>`<div class="kpi"><span>${t.name}</span><span class="badge" style="color:var(--warn)">Score ${t.evidenceScore}</span></div>`).join('')}
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <h3>Hot Papers (last 12 months surrogate)</h3>
+      ${hotPapers.map(p=>`<div class="small topic-item"><strong>${p.topic}</strong>: ${p.citation} (<a href="${p.doi}" target="_blank">DOI</a>, cites ${p.cites})</div>`).join('')}
+    </div>
+    <div class="footer-note">All data are realistic simulated values intended for product MVP demonstration.</div>
+  `;
+}
+
+function renderDirectory() {
+  const categories = [...new Set(DATA.map(d=>d.category))];
+  document.getElementById('directory').innerHTML = `
+    <div class="search-row">
+      <input id="q" placeholder="Search topic, abstract-like findings, outcomes..." style="min-width:280px; flex:1;" />
+      <select id="cat"><option value="">All categories</option>${categories.map(c=>`<option>${c}</option>`)}</select>
+      <select id="score"><option value="">Any score</option><option value="80">80+</option><option value="60">60+</option><option value="40">40+</option></select>
+      <select id="region"><option value="">All regions</option><option>Cervical</option><option>Thoracic</option><option>Lumbar</option><option>Sacral</option></select>
+    </div>
+    <div id="topicList"></div>
+  `;
+  const renderList = () => {
+    const q = document.getElementById('q').value.toLowerCase();
+    const cat = document.getElementById('cat').value;
+    const score = +document.getElementById('score').value || 0;
+    const region = document.getElementById('region').value;
+    const filtered = DATA.filter(t =>
+      (!cat || t.category===cat) &&
+      (!region || t.region===region) &&
+      t.evidenceScore >= score &&
+      (t.name.toLowerCase().includes(q) || t.findings.some(f=>f.citation.toLowerCase().includes(q)) || t.outcomes.join(' ').toLowerCase().includes(q))
+    );
+    document.getElementById('topicList').innerHTML = filtered.map(t=>`
+      <div class="card topic-item">
+        <div class="kpi"><h3 style="margin:0;">${t.name}</h3><span class="badge">Score ${t.evidenceScore}</span></div>
+        <div class="small muted">${t.category} · ${t.region} · ${t.population}</div>
+        <div class="small">MeSH: ${t.mesh.map(m=>`<span class='pill'>${m}</span>`).join('')}</div>
+        <div class="small">Outcomes: ${t.outcomes.join(', ')}</div>
+        <button data-id="${t.id}" class="open-topic">Open Evidence Dashboard</button>
+      </div>`).join('') || '<div class="card">No results</div>';
+    document.querySelectorAll('.open-topic').forEach(btn=>btn.onclick=()=>{
+      selectedTopic = DATA.find(t=>t.id===btn.dataset.id);
+      document.querySelector('[data-id="dashboard"]').click();
+    });
+  };
+  ['q','cat','score','region'].forEach(id=>document.getElementById(id).oninput=renderList);
+  renderList();
+}
+
+let trendChart, levelChart;
+function renderDashboard() {
+  const t = selectedTopic;
+  document.getElementById('dashboard').innerHTML = `
+    <div class="search-row"><label>Topic: </label><select id="topicSelect">${DATA.map(d=>`<option value="${d.id}" ${d.id===t.id?'selected':''}>${d.name}</option>`).join('')}</select></div>
+    <div class="grid">
+      <div class="card"><h3>Evidence Strength Score</h3><div class="score">${t.evidenceScore}</div><div class="muted">Weighted by study design hierarchy and consistency</div></div>
+      <div class="card"><h3>Publication Volume</h3><div class="score">${t.total}</div><div class="muted">10-year aggregated count</div></div>
+      <div class="card"><h3>Estimated RCTs</h3><div class="score">${t.rcts}</div><div class="muted">Across all indexed sources</div></div>
+      <div class="card"><h3>Complication/Fusion</h3><div class="score">${t.complicationRate}% / ${t.fusionRate}%</div><div class="muted">Simulated pooled ranges</div></div>
+    </div>
+    <div class="twocol" style="margin-top:12px;">
+      <div class="card"><h3>Publication Trend (10y)</h3><canvas id="trendCanvas" height="130"></canvas></div>
+      <div class="card"><h3>Level of Evidence Breakdown</h3><canvas id="levelCanvas" height="130"></canvas></div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <h3>Database Breakdown</h3>
+      <table><thead><tr><th>Source</th><th>Publications</th><th>Quality Score</th></tr></thead>
+      <tbody>${t.dbBreakdown.map(d=>`<tr><td>${d.db}</td><td>${d.count}</td><td>${d.quality}</td></tr>`).join('')}</tbody></table>
+    </div>
+    <div class="twocol" style="margin-top:12px;">
+      <div class="card"><h3>Top Supporting Findings</h3>${renderFindings(t,'support')}</div>
+      <div class="card"><h3>Top Contradicting Findings</h3>${renderFindings(t,'contradict')}</div>
+    </div>
+  `;
+  document.getElementById('topicSelect').onchange = (e) => { selectedTopic = DATA.find(d=>d.id===e.target.value); renderDashboard(); };
+
+  trendChart?.destroy();
+  trendChart = new Chart(document.getElementById('trendCanvas'), {
+    type:'line',
+    data:{ labels:t.yearly.map(y=>y.year), datasets:[{label:'Publications', data:t.yearly.map(y=>y.count), borderColor:'#4ab4ff', backgroundColor:'rgba(74,180,255,.2)', fill:true, tension:.25}] },
+    options:{ plugins:{legend:{labels:{color:'#e5f3ff'}}}, scales:{x:{ticks:{color:'#9fc0df'}}, y:{ticks:{color:'#9fc0df'}}} }
+  });
+  levelChart?.destroy();
+  levelChart = new Chart(document.getElementById('levelCanvas'), {
+    type:'pie',
+    data:{ labels:['Level I','Level II','Level III','Level IV','Level V'], datasets:[{data:[t.level.I,t.level.II,t.level.III,t.level.IV,t.level.V], backgroundColor:['#5df4b7','#4ab4ff','#25d0c8','#ffb86b','#ff6d8a']}] },
+    options:{ plugins:{legend:{labels:{color:'#e5f3ff'}}} }
+  });
+}
+
+function renderFindings(topic, type) {
+  const cls = type==='support'?'finding-support':'finding-contradict';
+  return topic.findings.filter(f=>f.type===type).sort((a,b)=>b.cites-a.cites).slice(0,5)
+    .map(f=>`<div class="small ${cls}" style="margin:8px 0;">[${f.db}] ${f.citation} <a href="${f.doi}" target="_blank">DOI</a> · cites ${f.cites}</div>`).join('');
+}
+
+function renderQuadrant() {
+  document.getElementById('quadrant').innerHTML = `
+    <div class="search-row">
+      <select id="qStudy"><option>All</option><option>RCT</option><option>Meta-analysis</option></select>
+      <select id="qPop"><option>All</option><option>Adult</option><option>Pediatric</option><option>Elderly/Osteoporotic</option></select>
+      <select id="qRegion"><option>All</option><option>Cervical</option><option>Thoracic</option><option>Lumbar</option><option>Sacral</option></select>
+      <select id="qCat"><option>All</option>${[...new Set(DATA.map(d=>d.category))].map(c=>`<option>${c}</option>`)}</select>
+    </div>
+    <div class="card"><div id="quadPlot" style="height:560px;"></div></div>
+  `;
+  const draw = () => {
+    const st = document.getElementById('qStudy').value;
+    const pop = document.getElementById('qPop').value;
+    const region = document.getElementById('qRegion').value;
+    const cat = document.getElementById('qCat').value;
+    const f = DATA.filter(d => (st==='All'||d.studyType===st) && (pop==='All'||d.population===pop) && (region==='All'||d.region===region) && (cat==='All'||d.category===cat));
+    const trace = {
+      x:f.map(d=>d.evidenceScore), y:f.map(d=>d.total), text:f.map(d=>`${d.name}<br>RCTs:${d.rcts}<br>"${d.findings[0].citation.split('. ')[1] || 'Key signal'}"`), mode:'markers+text',
+      type:'scatter', textposition:'top center', marker:{size:12,color:'#25d0c8'}
+    };
+    Plotly.newPlot('quadPlot',[trace],{
+      paper_bgcolor:'#10253f', plot_bgcolor:'#0b1f35',
+      font:{color:'#e5f3ff'},
+      xaxis:{title:'Evidence Quality'}, yaxis:{title:'Research Volume / Publication Count'}
+    }, {responsive:true});
+  };
+  ['qStudy','qPop','qRegion','qCat'].forEach(id=>document.getElementById(id).onchange=draw);
+  draw();
+}
+
+function renderCompare() {
+  document.getElementById('compare').innerHTML = `
+    <div class="search-row">
+      <select id="c1">${DATA.map(d=>`<option value="${d.id}">${d.name}</option>`)}</select>
+      <select id="c2">${DATA.map(d=>`<option value="${d.id}">${d.name}</option>`)}</select>
+      <select id="c3"><option value="">(optional) Third topic</option>${DATA.map(d=>`<option value="${d.id}">${d.name}</option>`)}</select>
+      <button id="runCmp">Compare</button>
+    </div>
+    <div id="cmpTable"></div>
+    <div class="card" style="margin-top:12px;">
+      <h3>Generate Comparison Paragraph</h3>
+      <button id="genPara">Generate</button>
+      <p id="cmpPara" class="small muted"></p>
+    </div>
+  `;
+  const make = () => {
+    const ids = [c1.value,c2.value,c3.value].filter(Boolean);
+    const rows = ids.map(id=>DATA.find(d=>d.id===id));
+    document.getElementById('cmpTable').innerHTML = `
+      <div class="card"><table><thead><tr><th>Metric</th>${rows.map(r=>`<th>${r.name}</th>`).join('')}</tr></thead><tbody>
+      <tr><td>Evidence Score</td>${rows.map(r=>`<td>${r.evidenceScore}</td>`).join('')}</tr>
+      <tr><td>RCT Count</td>${rows.map(r=>`<td>${r.rcts}</td>`).join('')}</tr>
+      <tr><td>Database Balance</td>${rows.map(r=>`<td>${r.dbBreakdown.map(d=>`${d.db}:${d.count}`).join('<br>')}</td>`).join('')}</tr>
+      <tr><td>Top Supporting Evidence</td>${rows.map(r=>`<td>${r.findings.find(f=>f.type==='support').citation}</td>`).join('')}</tr>
+      <tr><td>Top Contradicting Evidence</td>${rows.map(r=>`<td>${r.findings.find(f=>f.type==='contradict').citation}</td>`).join('')}</tr>
+      <tr><td>Common Outcomes</td>${rows.map(r=>`<td>${r.outcomes.join(', ')}</td>`).join('')}</tr>
+      <tr><td>Complication Rate</td>${rows.map(r=>`<td>${r.complicationRate}%</td>`).join('')}</tr>
+      </tbody></table></div>`;
+    document.getElementById('genPara').onclick = () => {
+      const sorted = [...rows].sort((a,b)=>b.evidenceScore-a.evidenceScore);
+      document.getElementById('cmpPara').textContent = `Across compared interventions, ${sorted[0].name} demonstrated the strongest overall evidence signal (score ${sorted[0].evidenceScore}; RCT n=${sorted[0].rcts}), while ${sorted[sorted.length-1].name} showed comparatively weaker certainty and higher heterogeneity. Shared endpoints included ${[...new Set(rows.flatMap(r=>r.outcomes))].slice(0,4).join(', ')}, with pooled complication rates ranging ${Math.min(...rows.map(r=>r.complicationRate))}% to ${Math.max(...rows.map(r=>r.complicationRate))}%. These patterns suggest that treatment selection should prioritize populations matching the highest-quality cohorts, while acknowledging conflicting findings around ${rows[1]?.name || rows[0].name}.`;
+    };
+  };
+  runCmp.onclick = make; make();
+}
+
+function renderAssistant() {
+  document.getElementById('assistant').innerHTML = `
+    <div class="twocol">
+      <div class="card">
+        <h3>Introduction Builder</h3>
+        <select id="introTopic">${DATA.map(d=>`<option value="${d.id}">${d.name}</option>`)}</select>
+        <button id="genIntro" style="margin-top:8px;">Generate Introduction</button>
+        <textarea id="introOut" rows="11" style="width:100%; margin-top:8px;"></textarea>
+      </div>
+      <div class="card">
+        <h3>PRISMA 2020 Flow Generator</h3>
+        <div class="small">Input records from databases</div><input id="pr1" type="number" value="1240" />
+        <div class="small">Records screened</div><input id="pr2" type="number" value="760" />
+        <div class="small">Full-text assessed</div><input id="pr3" type="number" value="143" />
+        <div class="small">Studies included</div><input id="pr4" type="number" value="36" />
+        <button id="genPrisma" style="margin-top:8px;">Generate PRISMA Template</button>
+        <pre id="prismaOut" class="small"></pre>
+      </div>
+    </div>
+    <div class="twocol" style="margin-top:12px;">
+      <div class="card">
+        <h3>Statistical Summary Table</h3>
+        <select id="sumTopic">${DATA.map(d=>`<option value="${d.id}">${d.name}</option>`)}</select>
+        <button id="genSum">Generate</button>
+        <div id="sumOut" class="small" style="max-height:260px; overflow:auto; margin-top:6px;"></div>
+      </div>
+      <div class="card">
+        <h3>Reference Formatter</h3>
+        <select id="refStyle"><option>Vancouver</option><option>AMA</option><option>Spine Journal</option><option>JBJS</option><option>European Spine Journal</option></select>
+        <button id="fmtRef">Format Landmark References</button>
+        <div id="refOut" class="small" style="margin-top:6px;"></div>
+      </div>
+    </div>
+  `;
+  genIntro.onclick = () => {
+    const t = DATA.find(d=>d.id===introTopic.value);
+    introOut.value = `Background: ${t.name} remains a clinically important topic in ${t.region.toLowerCase()} spine surgery. Despite a growing body of literature, uncertainty persists due to variability in study design and patient selection.\n\nRationale: We aggregated evidence across PubMed, Cochrane, Embase, Google Scholar, and Web of Science to reduce single-database selection bias and provide a more balanced view.\n\nCurrent Evidence: The topic demonstrates an aggregated evidence strength score of ${t.evidenceScore}/100 with approximately ${t.rcts} RCT-level studies and key outcomes including ${t.outcomes.join(', ')}. Representative high-impact reports include ${t.landmark.map(l=>l.citation.split(' doi:')[0]).join('; ')}.\n\nObjective: This manuscript synthesizes efficacy, safety, and evidence gaps to inform contemporary decision-making and future trial design.`;
+  };
+  genPrisma.onclick = () => {
+    prismaOut.textContent = `Identification\n  Records identified via databases (n=${pr1.value})\n  Duplicate records removed\nScreening\n  Records screened (n=${pr2.value})\n  Records excluded\nEligibility\n  Full-text reports assessed (n=${pr3.value})\n  Reports excluded with reasons\nIncluded\n  Studies included in qualitative/quantitative synthesis (n=${pr4.value})`;
+  };
+  genSum.onclick = () => {
+    const t = DATA.find(d=>d.id===sumTopic.value);
+    const rows = t.findings.slice(0,5).map((f,i)=>`<tr><td>${f.citation.split(' et al')[0]} et al.</td><td>${2018+i}</td><td>${i<2?'RCT':'Retrospective cohort'}</td><td>${120+i*50}</td><td>${t.name}</td><td>Standard care</td><td>${pick(t.outcomes,i)}</td><td>${i%2===0?'Significant improvement':'No significant difference'}</td><td>${i<2?'I':'III'}</td></tr>`).join('');
+    sumOut.innerHTML = `<table><thead><tr><th>Author</th><th>Year</th><th>Design</th><th>N</th><th>Intervention</th><th>Comparator</th><th>Outcome</th><th>Result</th><th>LoE</th></tr></thead><tbody>${rows}</tbody></table>`;
+  };
+  fmtRef.onclick = () => {
+    const style = refStyle.value;
+    const refs = selectedTopic.landmark.map((l, i)=>`${i+1}. ${l.citation}${style==='AMA'?' [AMA]':''}${style==='Vancouver'?' [Vancouver]':''}`).join('<br>');
+    refOut.innerHTML = `<strong>${style}:</strong><br>${refs}`;
+  };
+}
+
+initTabs();
+renderHome();
+renderDirectory();
+renderDashboard();
+</script>
+</body>
+</html>
